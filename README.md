@@ -25,6 +25,10 @@ This project uses K-Means and Hierarchical Agglomerative Clustering to dynamical
 - `/backend`: FastAPI Python server (`main.py`).
 - `/frontend`: React + Vite application.
 
+## Deployment to Render
+
+This project is optimized and configured for seamless deployment to **Render** via Docker Blueprint or Native Python. Refer to [DEPLOYMENT.md](DEPLOYMENT.md) for full instructions.
+
 ## Installation & Setup
 
 1. **Prerequisites:** Python 3.10+ and Node.js (npm).

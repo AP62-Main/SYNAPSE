@@ -4,7 +4,8 @@ scikit-learn
 scipy
 plotly
 fastapi
-uvicorn
+uvicorn[standard]
 pydantic
 python-multipart
 joblib
+nodeenv

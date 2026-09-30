@@ -26,13 +26,19 @@ try:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
     
-    # Try looking in cwd, then project_root
+    # Search candidates across project root, current directory, and cwd
     def find_file(relative_path):
-        if os.path.exists(relative_path):
-            return relative_path
-        alt = os.path.join(project_root, relative_path)
-        if os.path.exists(alt):
-            return alt
+        candidates = [
+            relative_path,
+            os.path.join(project_root, relative_path),
+            os.path.join(current_dir, relative_path),
+            os.path.join(os.getcwd(), relative_path),
+            os.path.join(os.getcwd(), 'student-clustering', relative_path),
+            os.path.join(current_dir, '..', relative_path),
+        ]
+        for c in candidates:
+            if os.path.exists(c):
+                return os.path.abspath(c)
         raise FileNotFoundError(f"Could not locate {relative_path}")
 
     pipeline = joblib.load(find_file('models/pipeline.joblib'))
@@ -57,9 +63,13 @@ class StudentData(BaseModel):
     online_resource_usage: float
     assessment_score: float
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health_check():
-    return {"status": "ok", "models_loaded": pipeline is not None}
+    return {
+        "status": "ok",
+        "models_loaded": pipeline is not None,
+        "frontend_loaded": dist_dir is not None
+    }
 
 @app.get("/api/dataset")
 def get_dataset(limit: int = 100):
@@ -145,7 +155,12 @@ def predict_cluster(data: StudentData):
 dist_candidates = [
     os.path.join(project_root, 'frontend', 'dist'),
     os.path.join(current_dir, '..', 'frontend', 'dist'),
-    'frontend/dist'
+    os.path.join(project_root, 'dist'),
+    os.path.join(os.getcwd(), 'student-clustering', 'frontend', 'dist'),
+    os.path.join(os.getcwd(), 'frontend', 'dist'),
+    os.path.join(os.getcwd(), 'dist'),
+    'frontend/dist',
+    'dist'
 ]
 dist_dir = None
 for candidate in dist_candidates:
@@ -154,11 +169,19 @@ for candidate in dist_candidates:
         break
 
 if dist_dir:
+    print(f"Serving frontend static files from: {dist_dir}")
     assets_dir = os.path.join(dist_dir, 'assets')
     if os.path.exists(assets_dir):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
-    @app.get("/{full_path:path}")
+    @app.api_route("/", methods=["GET", "HEAD"])
+    async def serve_root():
+        index_file = os.path.join(dist_dir, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        raise HTTPException(status_code=404, detail="Frontend index.html not found")
+
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
     async def serve_spa(full_path: str):
         if full_path.startswith("api"):
             raise HTTPException(status_code=404, detail="API endpoint not found")
@@ -166,7 +189,17 @@ if dist_dir:
         if os.path.exists(file_path) and os.path.isfile(file_path):
             return FileResponse(file_path)
         return FileResponse(os.path.join(dist_dir, "index.html"))
+else:
+    print("Warning: Frontend dist directory not found. Running in API-only mode.")
+    @app.api_route("/", methods=["GET", "HEAD"])
+    def root_fallback():
+        return {
+            "status": "ok",
+            "message": "Student Learning Pattern Segmentation API is active.",
+            "notice": "Frontend build assets not found. Run 'npm run build' in the frontend directory."
+        }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("backend.main:app", host="0.0.0.0", port=port)
